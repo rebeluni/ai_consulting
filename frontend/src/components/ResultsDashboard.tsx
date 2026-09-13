@@ -61,7 +61,7 @@ export function ResultsDashboard({ brief, reviewMap, onReview, onHighlight, proj
     <div>
       {/* Reliability Strip — computed client-side from JSON */}
       <div className="reliability-strip">
-        <span className="reliability-icon">◎</span>
+        <span className="reliability-icon">■</span>
         <span className="reliability-stats">
           <strong>{stats.evidenceVerified} of {stats.total}</strong> items evidence-verified
           {stats.inference > 0 && (
@@ -83,7 +83,7 @@ export function ResultsDashboard({ brief, reviewMap, onReview, onHighlight, proj
           style={{ marginLeft: 'auto', flexShrink: 0 }}
           title="Download brief as text file (reviewed state)"
         >
-          ↓ Download Brief
+          Download Brief
         </button>
       </div>
 

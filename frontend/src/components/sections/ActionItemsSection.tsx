@@ -26,6 +26,7 @@ export function ActionItemsSection({ items, reviewMap, onReview, onHighlight }: 
             onReview={onReview}
             mainText={item.action}
             evidence={item.evidence}
+            verification={item.verification}
             span={span}
             onHighlight={onHighlight}
             metaContent={

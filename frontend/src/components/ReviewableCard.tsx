@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { ReviewStatus, ReviewState, ReviewMap, EvidenceSpan } from '../types';
 
+type VerificationStatus = 'supported' | 'partial' | 'unsupported' | 'not independently verified';
+
 interface ReviewableCardProps {
   id: string;
   reviewMap: ReviewMap;
@@ -9,6 +11,8 @@ interface ReviewableCardProps {
   mainText: string;
   metaContent?: React.ReactNode;
   evidence?: string;
+  /** Verification status from the independent verification pass */
+  verification?: VerificationStatus;
   /** Character offsets into the source text for this item's evidence */
   span?: { start: number; end: number } | null;
   /** Called when the card gains/loses hover focus (for source highlighting) */
@@ -17,7 +21,7 @@ interface ReviewableCardProps {
 
 export function ReviewableCard({
   id, reviewMap, onReview, children, mainText, metaContent, evidence,
-  span, onHighlight,
+  verification, span, onHighlight,
 }: ReviewableCardProps) {
   const state: ReviewState = reviewMap[id] || { status: 'unreviewed' };
   const [editText, setEditText] = useState(state.editedContent || mainText);
@@ -82,7 +86,21 @@ export function ReviewableCard({
         {reviewedBadge()}
       </div>
 
-      {metaContent && <div className="rc-meta">{metaContent}</div>}
+      {(metaContent || (verification && verification !== 'supported' && verification !== 'not independently verified')) && (
+        <div className="rc-meta">
+          {metaContent}
+          {verification === 'partial' && (
+            <span className="verification-badge verification-partial" title="Partially supported by source text — review carefully">
+              needs a closer look
+            </span>
+          )}
+          {verification === 'unsupported' && (
+            <span className="verification-badge verification-unsupported" title="Could not verify this claim against the source text">
+              not in source
+            </span>
+          )}
+        </div>
+      )}
 
       {evidence && !isEditing && (
         <div className="rc-evidence">

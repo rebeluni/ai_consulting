@@ -66,6 +66,7 @@ export function RequirementsSection({ items, reviewMap, onReview, onHighlight }:
                   onReview={onReview}
                   mainText={req.requirement}
                   evidence={req.evidence}
+                  verification={req.verification}
                   span={span}
                   onHighlight={onHighlight}
                   metaContent={

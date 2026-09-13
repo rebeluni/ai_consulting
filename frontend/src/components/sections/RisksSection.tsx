@@ -26,6 +26,7 @@ export function RisksSection({ items, reviewMap, onReview, onHighlight }: Props)
             onReview={onReview}
             mainText={item.description}
             evidence={item.supporting_evidence}
+            verification={item.verification}
             span={span}
             onHighlight={onHighlight}
             metaContent={

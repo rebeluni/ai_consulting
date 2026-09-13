@@ -26,6 +26,7 @@ export interface Requirement {
   evidence: string;
   confidence: 'High' | 'Medium' | 'Low';
   is_inference?: boolean;
+  verification?: 'supported' | 'partial' | 'unsupported' | 'not independently verified';
   // Evidence span offsets injected by backend (may be null when no match)
   span_start?: number | null;
   span_end?: number | null;
@@ -42,6 +43,7 @@ export interface RiskOrDependency {
   severity: 'High' | 'Medium' | 'Low';
   supporting_evidence: string;
   is_inference?: boolean;
+  verification?: 'supported' | 'partial' | 'unsupported' | 'not independently verified';
   span_start?: number | null;
   span_end?: number | null;
 }
@@ -52,6 +54,7 @@ export interface ActionItem {
   priority: 'High' | 'Medium' | 'Low';
   evidence: string;
   is_inference?: boolean;
+  verification?: 'supported' | 'partial' | 'unsupported' | 'not independently verified';
   span_start?: number | null;
   span_end?: number | null;
 }
@@ -61,6 +64,13 @@ export interface AIOpportunity {
   potential_benefit: string;
   feasibility: 'High' | 'Medium' | 'Low';
   caution: string;
+  // Assessment dimensions (added in v2 — all optional for backwards compat)
+  potential_value?: 'High' | 'Medium' | 'Low';
+  effort?: 'High' | 'Medium' | 'Low';
+  data_availability?: 'High' | 'Medium' | 'Low';
+  human_oversight_required?: 'Yes' | 'No';
+  risk?: 'High' | 'Medium' | 'Low';
+  recommendation?: 'Pilot' | 'Explore' | 'Defer' | 'Not recommended';
 }
 
 export interface ProjectBrief {

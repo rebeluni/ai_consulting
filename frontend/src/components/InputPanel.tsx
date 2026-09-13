@@ -107,7 +107,7 @@ export function InputPanel({
                 onClick={handleLoadExample}
                 disabled={loading}
               >
-                ↺ Load Example
+                Load Example
               </button>
               <button
                 id="analyze-btn"
@@ -121,7 +121,7 @@ export function InputPanel({
                     Analyzing…
                   </>
                 ) : (
-                  <>→ Analyze Project</>
+                  <>Analyze Project</>
                 )}
               </button>
             </div>

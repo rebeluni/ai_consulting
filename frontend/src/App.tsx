@@ -218,7 +218,7 @@ function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {isResults && (
             <button className="btn btn-secondary btn-sm" onClick={handleReset}>
-              ← New Analysis
+              New Analysis
             </button>
           )}
           <span className="header-badge">Prototype</span>
