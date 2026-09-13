@@ -32,19 +32,14 @@ const SECTIONS = [
 function useReliabilityStats(brief: ProjectBrief, reviewMap: ReviewMap) {
   return useMemo(() => {
     const reviewable = [
-      ...brief.key_requirements.map((r, i) => ({ id: `req-${r.category}-${i}`, confidence: r.confidence, evidence: r.evidence })),
-      ...brief.risks_and_dependencies.map((r, i) => ({ id: `risk-${i}`, confidence: r.severity, evidence: r.supporting_evidence })),
-      ...brief.action_items.map((a, i) => ({ id: `action-${i}`, confidence: a.priority, evidence: a.evidence })),
+      ...brief.key_requirements.map((r, i) => ({ id: `req-${r.category}-${i}`, confidence: r.confidence, is_inference: r.is_inference ?? false })),
+      ...brief.risks_and_dependencies.map((r, i) => ({ id: `risk-${i}`, confidence: r.severity, is_inference: r.is_inference ?? false })),
+      ...brief.action_items.map((a, i) => ({ id: `action-${i}`, confidence: a.priority, is_inference: a.is_inference ?? false })),
     ];
 
     const total = reviewable.length;
-    const INFERENCE_PREFIX = 'Inference';
-    const evidenceVerified = reviewable.filter(
-      r => r.evidence && !r.evidence.startsWith(INFERENCE_PREFIX)
-    ).length;
-    const inference = reviewable.filter(
-      r => r.evidence && r.evidence.startsWith(INFERENCE_PREFIX)
-    ).length;
+    const inference = reviewable.filter(r => r.is_inference).length;
+    const evidenceVerified = total - inference;
     const lowConfidence = brief.key_requirements.filter(r => r.confidence === 'Low').length;
 
     const confirmed = Object.values(reviewMap).filter(s => s.status === 'confirmed').length;

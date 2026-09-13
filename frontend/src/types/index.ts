@@ -25,6 +25,7 @@ export interface Requirement {
     | 'Business / Operations';
   evidence: string;
   confidence: 'High' | 'Medium' | 'Low';
+  is_inference?: boolean;
   // Evidence span offsets injected by backend (may be null when no match)
   span_start?: number | null;
   span_end?: number | null;
@@ -40,6 +41,7 @@ export interface RiskOrDependency {
   description: string;
   severity: 'High' | 'Medium' | 'Low';
   supporting_evidence: string;
+  is_inference?: boolean;
   span_start?: number | null;
   span_end?: number | null;
 }
@@ -49,6 +51,7 @@ export interface ActionItem {
   suggested_owner: string;
   priority: 'High' | 'Medium' | 'Low';
   evidence: string;
+  is_inference?: boolean;
   span_start?: number | null;
   span_end?: number | null;
 }

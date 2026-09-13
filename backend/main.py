@@ -93,10 +93,11 @@ Return this exact JSON structure:
   },
   "key_requirements": [
     {
-      "requirement": "string",
+      "requirement": "string — prefix with 'Inference — requires human validation:' if inferred",
       "category": "Interior Design | Workplace Strategy & Consulting | Engineering & Sustainability | Project Delivery | Business & Operations",
       "evidence": "short quote or paraphrase from source",
-      "confidence": "High | Medium | Low"
+      "confidence": "High | Medium | Low",
+      "is_inference": false
     }
   ],
   "open_questions": [
@@ -108,17 +109,19 @@ Return this exact JSON structure:
   "risks_and_dependencies": [
     {
       "type": "Risk | Dependency",
-      "description": "string",
+      "description": "string — prefix with 'Inference — requires human validation:' if inferred",
       "severity": "High | Medium | Low",
-      "supporting_evidence": "short quote or paraphrase from source"
+      "supporting_evidence": "short quote or paraphrase from source",
+      "is_inference": false
     }
   ],
   "action_items": [
     {
-      "action": "string",
+      "action": "string — prefix with 'Inference — requires human validation:' if inferred",
       "suggested_owner": "string",
       "priority": "High | Medium | Low",
-      "evidence": "short quote or paraphrase from source"
+      "evidence": "short quote or paraphrase from source",
+      "is_inference": false
     }
   ],
   "ai_opportunities": [
@@ -306,23 +309,29 @@ def analyze(request: AnalyzeRequest):
         # matching text span in the original source without any extra API call.
         source_text = request.text
 
+        INFERENCE_PREFIX = "Inference"
+
         for item in validated.get("key_requirements", []):
             ev = item.get("evidence", "")
             span = find_evidence_span(source_text, ev)
-            item["span_start"] = span[0] if span else None
-            item["span_end"]   = span[1] if span else None
+            item["span_start"]  = span[0] if span else None
+            item["span_end"]    = span[1] if span else None
+            # Authoritative is_inference: check the requirement text itself
+            item["is_inference"] = item.get("requirement", "").startswith(INFERENCE_PREFIX)
 
         for item in validated.get("risks_and_dependencies", []):
             ev = item.get("supporting_evidence", "")
             span = find_evidence_span(source_text, ev)
-            item["span_start"] = span[0] if span else None
-            item["span_end"]   = span[1] if span else None
+            item["span_start"]  = span[0] if span else None
+            item["span_end"]    = span[1] if span else None
+            item["is_inference"] = item.get("description", "").startswith(INFERENCE_PREFIX)
 
         for item in validated.get("action_items", []):
             ev = item.get("evidence", "")
             span = find_evidence_span(source_text, ev)
-            item["span_start"] = span[0] if span else None
-            item["span_end"]   = span[1] if span else None
+            item["span_start"]  = span[0] if span else None
+            item["span_end"]    = span[1] if span else None
+            item["is_inference"] = item.get("action", "").startswith(INFERENCE_PREFIX)
 
         return validated
     except (ValueError, KeyError) as e:
