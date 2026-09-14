@@ -1001,6 +1001,16 @@ body {
   line-height: 1.5;
 }
 
+.section-failure-banner {
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.25rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 /* ─── Section Nav ──────────────────────────────────────────────────────────── */
 .section-nav {
   display: flex;

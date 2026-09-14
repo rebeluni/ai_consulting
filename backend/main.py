@@ -5,7 +5,9 @@ FastAPI + Groq LLM
 import os
 import json
 import re
+import time
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -21,9 +23,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="M Moser AI Brief Assistant", version="0.1.0")
 
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"] if "*" in CORS_ORIGINS else CORS_ORIGINS + ["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,9 +72,10 @@ class QARequest(BaseModel):
 
 # ─── Prompts ─────────────────────────────────────────────────────────────────
 
-ANALYZE_SYSTEM_PROMPT = """You are an expert project intelligence assistant for a professional services firm specialising in workplace design and project delivery.
+PROMPT_OVERVIEW_REQUIREMENTS = """You are an expert project intelligence assistant for a professional services firm specialising in workplace design and project delivery.
 
-Your task is to analyse unstructured project notes and produce a STRICT JSON response with NO additional text, markdown, or commentary outside the JSON block.
+Your task is to analyse unstructured project notes and extract the project overview and key requirements.
+Produce a STRICT JSON response with NO additional text, markdown, or commentary outside the JSON block.
 
 CRITICAL RULES:
 1. NEVER invent information not present in the source text.
@@ -81,7 +85,6 @@ CRITICAL RULES:
 5. Return ONLY valid JSON. No preamble, no explanation, no code fences.
 
 Return this exact JSON structure:
-
 {
   "project_overview": {
     "project_name": "string or 'Not specified in source material.'",
@@ -99,13 +102,25 @@ Return this exact JSON structure:
       "confidence": "High | Medium | Low",
       "is_inference": false
     }
-  ],
-  "open_questions": [
-    {
-      "question": "string",
-      "why_it_matters": "string"
-    }
-  ],
+  ]
+}
+
+Ensure key_requirements has at least 5 items if the material supports it."""
+
+PROMPT_RISKS = """You are an expert project intelligence assistant for a professional services firm specialising in workplace design and project delivery.
+
+Your task is to analyse unstructured project notes and extract the risks and dependencies.
+Produce a STRICT JSON response with NO additional text, markdown, or commentary outside the JSON block.
+
+CRITICAL RULES:
+1. NEVER invent information not present in the source text.
+2. If information is missing, use exactly: "Not specified in source material."
+3. If you are making an inference, prefix it with: "Inference — requires human validation:"
+4. Always quote or paraphrase the source evidence for each finding.
+5. Return ONLY valid JSON. No preamble, no explanation, no code fences.
+
+Return this exact JSON structure:
+{
   "risks_and_dependencies": [
     {
       "type": "Risk | Dependency",
@@ -114,7 +129,47 @@ Return this exact JSON structure:
       "supporting_evidence": "short quote or paraphrase from source",
       "is_inference": false
     }
-  ],
+  ]
+}"""
+
+PROMPT_QUESTIONS = """You are an expert project intelligence assistant for a professional services firm specialising in workplace design and project delivery.
+
+Your task is to analyse unstructured project notes and identify critical open questions where information is missing or ambiguous.
+Produce a STRICT JSON response with NO additional text, markdown, or commentary outside the JSON block.
+
+CRITICAL RULES:
+1. NEVER invent information not present in the source text.
+2. If information is missing, use exactly: "Not specified in source material."
+3. If you are making an inference, prefix it with: "Inference — requires human validation:"
+4. Always quote or paraphrase the source evidence for each finding.
+5. Return ONLY valid JSON. No preamble, no explanation, no code fences.
+
+Return this exact JSON structure:
+{
+  "open_questions": [
+    {
+      "question": "string",
+      "why_it_matters": "string"
+    }
+  ]
+}
+
+Ensure open_questions captures genuinely missing or ambiguous information."""
+
+PROMPT_ACTIONS = """You are an expert project intelligence assistant for a professional services firm specialising in workplace design and project delivery.
+
+Your task is to analyse unstructured project notes and extract immediate action items and next steps.
+Produce a STRICT JSON response with NO additional text, markdown, or commentary outside the JSON block.
+
+CRITICAL RULES:
+1. NEVER invent information not present in the source text.
+2. If information is missing, use exactly: "Not specified in source material."
+3. If you are making an inference, prefix it with: "Inference — requires human validation:"
+4. Always quote or paraphrase the source evidence for each finding.
+5. Return ONLY valid JSON. No preamble, no explanation, no code fences.
+
+Return this exact JSON structure:
+{
   "action_items": [
     {
       "action": "string — prefix with 'Inference — requires human validation:' if inferred",
@@ -123,7 +178,23 @@ Return this exact JSON structure:
       "evidence": "short quote or paraphrase from source",
       "is_inference": false
     }
-  ],
+  ]
+}"""
+
+PROMPT_AI_OPPS = """You are an expert project intelligence assistant for a professional services firm specialising in workplace design and project delivery.
+
+Your task is to analyse unstructured project notes and identify practical AI opportunities for the project.
+Produce a STRICT JSON response with NO additional text, markdown, or commentary outside the JSON block.
+
+CRITICAL RULES:
+1. NEVER invent information not present in the source text.
+2. If information is missing, use exactly: "Not specified in source material."
+3. If you are making an inference, prefix it with: "Inference — requires human validation:"
+4. Always quote or paraphrase the source evidence for each finding.
+5. Return ONLY valid JSON. No preamble, no explanation, no code fences.
+
+Return this exact JSON structure:
+{
   "ai_opportunities": [
     {
       "opportunity": "string",
@@ -140,7 +211,7 @@ Return this exact JSON structure:
   ]
 }
 
-Produce exactly 3 ai_opportunities. For each ai_opportunity, the recommendation field must follow this logic: 'Pilot' if feasibility is High and risk is Low or Medium; 'Explore' if feasibility is Medium; 'Defer' if effort is High and potential_value is Low; 'Not recommended' if risk is High and data_availability is Low. Ensure key_requirements has at least 5 items if the material supports it. Ensure open_questions captures genuinely missing or ambiguous information."""
+Produce exactly 3 ai_opportunities. For each ai_opportunity, the recommendation field must follow this logic: 'Pilot' if feasibility is High and risk is Low or Medium; 'Explore' if feasibility is Medium; 'Defer' if effort is High and potential_value is Low; 'Not recommended' if risk is High and data_availability is Low."""
 
 QA_SYSTEM_PROMPT = """You are a project assistant. You can ONLY answer questions based on the project notes provided to you.
 
@@ -345,9 +416,48 @@ def run_verification(source_text: str, items: list[dict]) -> dict:
 
 
 
+DEFAULT_PROJECT_OVERVIEW = {
+    "project_name": "Not specified in source material.",
+    "project_type": "Not specified in source material.",
+    "location": "Not specified in source material.",
+    "project_objective": "Not specified in source material.",
+    "key_stakeholders": [],
+    "timeline": "Not specified in source material.",
+}
+
+
+def extract_section(
+    task_key: str,
+    system_prompt: str,
+    user_content: str,
+    model: Optional[str] = None
+) -> tuple[str, dict, Optional[str]]:
+    """Runs a single extraction call concurrently.
+    Returns (task_key, parsed_json_dict, error_string_or_None).
+    """
+    t_start = time.time()
+    time_str = time.strftime("%H:%M:%S", time.localtime(t_start))
+    logger.info(f"[{task_key}] extraction started at {time_str}")
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ]
+    try:
+        raw = call_groq(messages, model=model)
+        parsed = extract_json(raw)
+        elapsed = time.time() - t_start
+        logger.info(f"[{task_key}] extraction completed in {elapsed:.2f}s")
+        return task_key, parsed, None
+    except Exception as e:
+        elapsed = time.time() - t_start
+        logger.error(f"[{task_key}] extraction failed after {elapsed:.2f}s: {e}")
+        return task_key, {}, str(e)
+
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
     return {
         "status": "ok",
@@ -357,80 +467,153 @@ def health():
 
 
 @app.post("/analyze")
+@app.post("/api/analyze")
 def analyze(request: AnalyzeRequest):
-    """Analyze project notes and return a structured project brief."""
-    messages = [
-        {"role": "system", "content": ANALYZE_SYSTEM_PROMPT},
-        {"role": "user", "content": f"Analyse the following project notes:\n\n{request.text}"},
+    """Analyze project notes and return a structured project brief using parallel extraction calls."""
+    user_content = f"Analyse the following project notes:\n\n{request.text}"
+
+    tasks = [
+        ("overview_and_requirements", PROMPT_OVERVIEW_REQUIREMENTS),
+        ("risks_and_dependencies", PROMPT_RISKS),
+        ("open_questions", PROMPT_QUESTIONS),
+        ("action_items", PROMPT_ACTIONS),
+        ("ai_opportunities", PROMPT_AI_OPPS),
     ]
 
-    raw = call_groq(messages)
-    logger.info(f"Raw LLM response (first 200 chars): {raw[:200]}")
+    results: dict[str, dict] = {}
+    errors: dict[str, str] = {}
 
-    try:
-        data = extract_json(raw)
-        validated = validate_brief(data)
+    overall_t0 = time.time()
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_key = {
+            executor.submit(extract_section, task_key, prompt, user_content): task_key
+            for task_key, prompt in tasks
+        }
+        for future in as_completed(future_to_key):
+            task_key, parsed, err = future.result()
+            if err or not parsed:
+                errors[task_key] = err or "Empty response"
+            else:
+                results[task_key] = parsed
 
-        # ── Evidence span enrichment ────────────────────────────────────────
-        # Add start/end character offsets so the frontend can highlight the
-        # matching text span in the original source without any extra API call.
-        source_text = request.text
+    overall_elapsed = time.time() - overall_t0
+    logger.info(f"Parallel extraction finished in {overall_elapsed:.2f}s (all {len(tasks)} calls)")
 
-        INFERENCE_PREFIX = "Inference"
-
-        for item in validated.get("key_requirements", []):
-            ev = item.get("evidence", "")
-            span = find_evidence_span(source_text, ev)
-            item["span_start"]  = span[0] if span else None
-            item["span_end"]    = span[1] if span else None
-            # Authoritative is_inference: check the requirement text itself
-            item["is_inference"] = item.get("requirement", "").startswith(INFERENCE_PREFIX)
-
-        for item in validated.get("risks_and_dependencies", []):
-            ev = item.get("supporting_evidence", "")
-            span = find_evidence_span(source_text, ev)
-            item["span_start"]  = span[0] if span else None
-            item["span_end"]    = span[1] if span else None
-            item["is_inference"] = item.get("description", "").startswith(INFERENCE_PREFIX)
-
-        for item in validated.get("action_items", []):
-            ev = item.get("evidence", "")
-            span = find_evidence_span(source_text, ev)
-            item["span_start"]  = span[0] if span else None
-            item["span_end"]    = span[1] if span else None
-            item["is_inference"] = item.get("action", "").startswith(INFERENCE_PREFIX)
-
-        # ── Independent verification pass ───────────────────────────────────
-        # Build a flat list of {id, text} for all reviewable items, then call
-        # run_verification once. Merge results back; default to
-        # 'not independently verified' if the call failed or id is missing.
-        verify_items = []
-        for i, item in enumerate(validated.get("key_requirements", [])):
-            verify_items.append({"id": f"req-{i}", "text": item.get("requirement", "")})
-        for i, item in enumerate(validated.get("risks_and_dependencies", [])):
-            verify_items.append({"id": f"risk-{i}", "text": item.get("description", "")})
-        for i, item in enumerate(validated.get("action_items", [])):
-            verify_items.append({"id": f"action-{i}", "text": item.get("action", "")})
-
-        verification_map = run_verification(source_text, verify_items)
-
-        for i, item in enumerate(validated.get("key_requirements", [])):
-            item["verification"] = verification_map.get(f"req-{i}", "not independently verified")
-        for i, item in enumerate(validated.get("risks_and_dependencies", [])):
-            item["verification"] = verification_map.get(f"risk-{i}", "not independently verified")
-        for i, item in enumerate(validated.get("action_items", [])):
-            item["verification"] = verification_map.get(f"action-{i}", "not independently verified")
-
-        return validated
-    except (ValueError, KeyError) as e:
-        logger.error(f"JSON validation failed: {e}\nRaw response: {raw}")
+    # If all 5 failed, raise HTTPException
+    if len(errors) == len(tasks):
         raise HTTPException(
-            status_code=422,
-            detail=f"The AI returned an unexpected format. Please try again. (Detail: {e})"
+            status_code=502,
+            detail="All extraction calls failed. Please try again."
         )
+
+    # Assemble merged brief with fallback defaults
+    merged: dict = {
+        "project_overview": DEFAULT_PROJECT_OVERVIEW.copy(),
+        "key_requirements": [],
+        "open_questions": [],
+        "risks_and_dependencies": [],
+        "action_items": [],
+        "ai_opportunities": [],
+        "partial_failure": [],
+    }
+
+    # 1. Overview & Requirements
+    if "overview_and_requirements" in results:
+        res1 = results["overview_and_requirements"]
+        if isinstance(res1.get("project_overview"), dict):
+            merged["project_overview"] = res1["project_overview"]
+        else:
+            merged["partial_failure"].append("project_overview")
+
+        if isinstance(res1.get("key_requirements"), list):
+            merged["key_requirements"] = res1["key_requirements"]
+        else:
+            merged["partial_failure"].append("key_requirements")
+    else:
+        merged["partial_failure"].extend(["overview_and_requirements", "project_overview", "key_requirements"])
+
+    # 2. Risks & Dependencies
+    if "risks_and_dependencies" in results and isinstance(results["risks_and_dependencies"].get("risks_and_dependencies"), list):
+        merged["risks_and_dependencies"] = results["risks_and_dependencies"]["risks_and_dependencies"]
+    else:
+        merged["partial_failure"].append("risks_and_dependencies")
+
+    # 3. Open Questions
+    if "open_questions" in results and isinstance(results["open_questions"].get("open_questions"), list):
+        merged["open_questions"] = results["open_questions"]["open_questions"]
+    else:
+        merged["partial_failure"].append("open_questions")
+
+    # 4. Action Items
+    if "action_items" in results and isinstance(results["action_items"].get("action_items"), list):
+        merged["action_items"] = results["action_items"]["action_items"]
+    else:
+        merged["partial_failure"].append("action_items")
+
+    # 5. AI Opportunities
+    if "ai_opportunities" in results and isinstance(results["ai_opportunities"].get("ai_opportunities"), list):
+        merged["ai_opportunities"] = results["ai_opportunities"]["ai_opportunities"]
+    else:
+        merged["partial_failure"].append("ai_opportunities")
+
+    # Deduplicate partial_failure while preserving order
+    merged["partial_failure"] = list(dict.fromkeys(merged["partial_failure"]))
+
+    # ── Evidence span enrichment ────────────────────────────────────────
+    # Add start/end character offsets so the frontend can highlight the
+    # matching text span in the original source without any extra API call.
+    source_text = request.text
+
+    INFERENCE_PREFIX = "Inference"
+
+    for item in merged.get("key_requirements", []):
+        ev = item.get("evidence", "")
+        span = find_evidence_span(source_text, ev)
+        item["span_start"]  = span[0] if span else None
+        item["span_end"]    = span[1] if span else None
+        # Authoritative is_inference: check the requirement text itself
+        item["is_inference"] = item.get("requirement", "").startswith(INFERENCE_PREFIX)
+
+    for item in merged.get("risks_and_dependencies", []):
+        ev = item.get("supporting_evidence", "")
+        span = find_evidence_span(source_text, ev)
+        item["span_start"]  = span[0] if span else None
+        item["span_end"]    = span[1] if span else None
+        item["is_inference"] = item.get("description", "").startswith(INFERENCE_PREFIX)
+
+    for item in merged.get("action_items", []):
+        ev = item.get("evidence", "")
+        span = find_evidence_span(source_text, ev)
+        item["span_start"]  = span[0] if span else None
+        item["span_end"]    = span[1] if span else None
+        item["is_inference"] = item.get("action", "").startswith(INFERENCE_PREFIX)
+
+    # ── Independent verification pass ───────────────────────────────────
+    # Build a flat list of {id, text} for all reviewable items, then call
+    # run_verification once. Merge results back; default to
+    # 'not independently verified' if the call failed or id is missing.
+    verify_items = []
+    for i, item in enumerate(merged.get("key_requirements", [])):
+        verify_items.append({"id": f"req-{i}", "text": item.get("requirement", "")})
+    for i, item in enumerate(merged.get("risks_and_dependencies", [])):
+        verify_items.append({"id": f"risk-{i}", "text": item.get("description", "")})
+    for i, item in enumerate(merged.get("action_items", [])):
+        verify_items.append({"id": f"action-{i}", "text": item.get("action", "")})
+
+    verification_map = run_verification(source_text, verify_items)
+
+    for i, item in enumerate(merged.get("key_requirements", [])):
+        item["verification"] = verification_map.get(f"req-{i}", "not independently verified")
+    for i, item in enumerate(merged.get("risks_and_dependencies", [])):
+        item["verification"] = verification_map.get(f"risk-{i}", "not independently verified")
+    for i, item in enumerate(merged.get("action_items", [])):
+        item["verification"] = verification_map.get(f"action-{i}", "not independently verified")
+
+    return merged
 
 
 @app.post("/qa")
+@app.post("/api/qa")
 def qa(request: QARequest):
     """Answer a question grounded strictly in the provided project notes."""
     messages = [
@@ -446,3 +629,18 @@ def qa(request: QARequest):
 
     answer = call_groq(messages)
     return {"answer": answer.strip()}
+
+
+# ─── Static files for single-service deployment ──────────────────────────────
+from fastapi.staticfiles import StaticFiles
+
+for candidate in [
+    os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"),
+    os.path.join(os.getcwd(), "frontend", "dist"),
+    os.path.join(os.getcwd(), "dist"),
+]:
+    dist_dir = os.path.abspath(candidate)
+    if os.path.isdir(dist_dir):
+        logger.info(f"Serving frontend static files from: {dist_dir}")
+        app.mount("/", StaticFiles(directory=dist_dir, html=True), name="frontend_dist")
+        break

@@ -80,6 +80,7 @@ export interface ProjectBrief {
   risks_and_dependencies: RiskOrDependency[];
   action_items: ActionItem[];
   ai_opportunities: AIOpportunity[];
+  partial_failure?: string[];
 }
 
 // ─── Review State Types ───────────────────────────────────────────────────────

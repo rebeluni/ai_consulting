@@ -28,7 +28,8 @@ export function QASection({ projectText }: Props) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/qa', {
+      const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+      const res = await fetch(`${apiBase}/api/qa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: q, project_text: projectText }),

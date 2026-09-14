@@ -1,0 +1,16 @@
+services:
+  # Option 1: Unified Fullstack Service (100% Free on Render, serves both Frontend and Backend)
+  - type: web
+    name: ai-consulting-assistant
+    runtime: python
+    buildCommand: "pip install -r backend/requirements.txt && cd frontend && npm install && npm run build && cd .."
+    startCommand: "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GROQ_API_KEY
+        sync: false # Prompts user to input in Render dashboard
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_FALLBACK_MODEL
+        value: qwen/qwen3.8-27b

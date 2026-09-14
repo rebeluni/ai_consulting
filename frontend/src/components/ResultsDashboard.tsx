@@ -50,8 +50,26 @@ function useReliabilityStats(brief: ProjectBrief, reviewMap: ReviewMap) {
   }, [brief, reviewMap]);
 }
 
+function SectionFailure({ id, title }: { id?: string; title: string }) {
+  return (
+    <div id={id} className="results-section">
+      <div className="section-title">{title}</div>
+      <div className="section-failure-banner">
+        This section couldn't be generated — try analyzing again.
+      </div>
+    </div>
+  );
+}
+
 export function ResultsDashboard({ brief, reviewMap, onReview, onHighlight, projectText, onExport }: Props) {
   const stats = useReliabilityStats(brief, reviewMap);
+  const failures = brief.partial_failure ?? [];
+  const hasFailed = (category: string) => {
+    if (category === 'project_overview' || category === 'key_requirements') {
+      return failures.includes(category) || failures.includes('overview_and_requirements');
+    }
+    return failures.includes(category);
+  };
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -105,12 +123,42 @@ export function ResultsDashboard({ brief, reviewMap, onReview, onHighlight, proj
         ))}
       </nav>
 
-      <ProjectOverview data={brief.project_overview} />
-      <RequirementsSection items={brief.key_requirements} reviewMap={reviewMap} onReview={onReview} onHighlight={onHighlight} />
-      <OpenQuestionsSection items={brief.open_questions} />
-      <RisksSection items={brief.risks_and_dependencies} reviewMap={reviewMap} onReview={onReview} onHighlight={onHighlight} />
-      <ActionItemsSection items={brief.action_items} reviewMap={reviewMap} onReview={onReview} onHighlight={onHighlight} />
-      <AIOpportunitiesSection items={brief.ai_opportunities} />
+      {hasFailed('project_overview') ? (
+        <SectionFailure id="section-overview" title="Project Overview" />
+      ) : (
+        <ProjectOverview data={brief.project_overview} />
+      )}
+
+      {hasFailed('key_requirements') ? (
+        <SectionFailure id="section-requirements" title="Key Requirements" />
+      ) : (
+        <RequirementsSection items={brief.key_requirements} reviewMap={reviewMap} onReview={onReview} onHighlight={onHighlight} />
+      )}
+
+      {hasFailed('open_questions') ? (
+        <SectionFailure id="section-questions" title="Open Questions" />
+      ) : (
+        <OpenQuestionsSection items={brief.open_questions} />
+      )}
+
+      {hasFailed('risks_and_dependencies') ? (
+        <SectionFailure id="section-risks" title="Risks & Dependencies" />
+      ) : (
+        <RisksSection items={brief.risks_and_dependencies} reviewMap={reviewMap} onReview={onReview} onHighlight={onHighlight} />
+      )}
+
+      {hasFailed('action_items') ? (
+        <SectionFailure id="section-actions" title="Action Items" />
+      ) : (
+        <ActionItemsSection items={brief.action_items} reviewMap={reviewMap} onReview={onReview} onHighlight={onHighlight} />
+      )}
+
+      {hasFailed('ai_opportunities') ? (
+        <SectionFailure id="section-ai" title="AI Opportunities" />
+      ) : (
+        <AIOpportunitiesSection items={brief.ai_opportunities} />
+      )}
+
       <QASection projectText={projectText} />
       <PrototypeNotes />
     </div>
